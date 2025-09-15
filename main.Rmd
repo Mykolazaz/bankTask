@@ -34,28 +34,22 @@ library(pROC)
 # Custom functions
 
 ```{r}
-create_bar_plot <- function(data, var_name) {
-  ggplot(data, aes(x = .data[[var_name]], fill = subscribed)) +
-    geom_bar(position = "fill") +
-    scale_fill_manual(values = c("TRUE" = "#4CAF50", "FALSE" = "#F44336")) +
-    labs(x = var_name, y = "", fill = "Subscribed") +
-    theme_minimal() +
-    theme(
-      axis.text.x = element_text(angle = 45, hjust = 1),
-      plot.title = element_text(size = 10),
-      legend.position = "none"
-    )
-}
+create_plot <- function(data, var_name, type = "prop") {
+  if (type == "count") {
+    position <- "stack"
+    colors <- c("TRUE" = "#1BC7E4", "FALSE" = "#E4381B")
+  } else {
+    position <- "fill"
+    colors <- c("TRUE" = "#4CAF50", "FALSE" = "#F44336")
+  }
 
-create_count_plot <- function(data, var_name) {
   ggplot(data, aes(x = .data[[var_name]], fill = subscribed)) +
-    geom_bar() +
-    scale_fill_manual(values = c("TRUE" = "#1BC7E4", "FALSE" = "#E4381B")) +
+    geom_bar(position = position) +
+    scale_fill_manual(values = colors) +
     labs(x = var_name, y = "", fill = "Subscribed") +
     theme_minimal() +
     theme(
       axis.text.x = element_text(angle = 45, hjust = 1),
-      plot.title = element_text(size = 10),
       legend.position = "none"
     )
 }
@@ -266,12 +260,11 @@ nrow(bank_data)
 Let's look at what percentage of clients subscribed based on their job.
 
 ```{r}
-create_count_plot(bank_data, "job")
+create_plot(bank_data, "job", "count")
 ```
 
-
 ```{r}
-create_bar_plot(bank_data, "job")
+create_plot(bank_data, "job")
 ```
 
 As the chart shows, students, of all jobs, were most likely to subscribe to a deposit (28,7%) with retired workers following second at 22,8%. This could be to students having fewer major expenses, such as mortgages or car loans, and being heavily dependent on their parents. Retirees also often seek low-risk investment options, making bank deposits attractive.
@@ -287,7 +280,7 @@ CrossTable(bank_data$subscribed, bank_data$marital, prop.t = FALSE, prop.chisq =
 Married clients make up 60,1% of our data set. Single clients were slightly more likely to subscribe to a deposit (14,9%) than other clients. It is also probable that this tendency is caused by randomness as marital status categories are not divided equally (single - 28,3%, divorced - 11,6% and married - 60,1%).
 
 ```{r}
-create_bar_plot(bank_data, "marital")
+create_plot(bank_data, "marital")
 ```
 
 \newpage
@@ -303,7 +296,7 @@ There are 1730 "unknown" values (3,9%) in the education variable. If we removed 
 Clients with a tertiary (college/university/vocational training) education (29,5%) are most likely to subscribe out of all groups - 15% of them chose to do so.
 
 ```{r}
-create_bar_plot(bank_data, "education")
+create_plot(bank_data, "education")
 ```
 
 \newpage
@@ -317,7 +310,7 @@ CrossTable(bank_data$subscribed, bank_data$in_default, prop.t = FALSE, prop.chis
 Only 6,4% of clients that were in default chose to sign up for a deposit. Out of the total sample only 1,8% of clients were in default. This variable is unlikely to be a good indicator of whether the client subscribes to a deposit.
 
 ```{r}
-create_bar_plot(bank_data, "in_default")
+create_plot(bank_data, "in_default")
 ```
 
 \newpage
@@ -382,7 +375,7 @@ CrossTable(bank_data$subscribed, bank_data$personal_loan, prop.t = FALSE, prop.c
 The situation with personal loans is practically the same as with housing loans accept the fact that only 16,1% of the clients had a personal loan (55,9% had a housing loan). Clients that did not have a personal loan were 1,9 times as likely to subscribe than the clients without one.
 
 ```{r}
-plot_list <- lapply(c("housing_loan", "personal_loan"), function(var) create_bar_plot(bank_data, var))
+plot_list <- lapply(c("housing_loan", "personal_loan"), function(var) create_plot(bank_data, var))
 
 bar_plot_matrix <- grid.arrange(grobs = plot_list, ncol = 2)
 ```
@@ -400,7 +393,7 @@ CrossTable(bank_data$subscribed, bank_data$contact_type, prop.t = FALSE, prop.ch
 Clients that were contacted through cellular were slightly more likely to make a subscription. The contact type for 28,7% of the clients is unknown.
 
 ```{r}
-create_bar_plot(bank_data, "contact_type")
+create_plot(bank_data, "contact_type")
 ```
 
 \newpage
@@ -408,21 +401,21 @@ create_bar_plot(bank_data, "contact_type")
 ## Day and month
 
 ```{r}
-create_bar_plot(bank_data, "day")
+create_plot(bank_data, "day")
 ```
 
 ```{r}
-create_bar_plot(bank_data, "month")
+create_plot(bank_data, "month")
 ```
 
 At first sight March, September, October and December seem to be the best months to contact the clients. Higher success could also be achieved when contacting the clients on the 1st, 10th, 22nd and 30th.
 
 ```{r}
-create_count_plot(bank_data, "day")
+create_plot(bank_data, "day", "count")
 ```
 
 ```{r}
-create_count_plot(bank_data, "month")
+create_plot(bank_data, "month", "count")
 ```
 
 After digging deeper, it becomes clear that the distribution of number of calls by date and month is disproportionate. The least clients were called on the 1st, 10th, 24th and 31st, and in March, September, October and December. This inconsistency should be addressed by the researchers that collected the data: more calls should be conducted to equalize the distribution.
@@ -513,7 +506,7 @@ CrossTable(bank_data$subscribed, bank_data$poutcome, prop.t = FALSE, prop.chisq 
 If the outcome of the previous campaign was successful, the outcome of the current campaign on the same client has a 64,6% likelihood of being successful. Although it must be noted that there are only 1500 clients with the poutcome attribute set as successful and the vast majority (81,7%) are set as unknown.
 
 ```{r}
-create_bar_plot(bank_data, "poutcome")
+create_plot(bank_data, "poutcome")
 ```
 
 \newpage
@@ -524,6 +517,7 @@ create_bar_plot(bank_data, "poutcome")
 corr_matrix <- cor(bank_data[, c("age", "balance", "duration")], use = "complete.obs")
 print(round(corr_matrix, 4))
 ```
+
 As the continuous variables are not correlated with each other, we can negate multicollinearity concerns for the logistic regression model.
 
 \newpage
@@ -636,6 +630,7 @@ cat("Model 1 (Full) Summary:\n")
 print(summary(results_1$model))
 cat("\nModel 1 AUC:", round(results_1$auc, 4), "\n")
 ```
+
 Now we remove variables that are not statistically meaningful to the model and produce a second much simpler model.
 
 ```{r}
@@ -697,4 +692,4 @@ By lowering the threshold down to 0.12, true positives are being recognized with
 2.  Most important parameters for choosing a potential bank deposit subscriber are contact type, day and month of contact and whether the client has borrowed a loan.
 3.  The duration variable cannot be used in the model due to in not being available before calling the customer even though it is the most significant determining feature.
 4.  The researchers should look into gathering additional data during aforementioned days and months.
-5. Additional descriptive client variables, such as previously used bank products and household income, would help increase model performance.
+5.  Additional descriptive client variables, such as previously used bank products and household income, would help increase model performance.
