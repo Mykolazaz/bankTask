@@ -29,6 +29,7 @@ library(bestNormalize)
 library(gridExtra)
 library(caret)
 library(pROC)
+library(fastDummies)
 ```
 
 # Custom functions
@@ -62,23 +63,27 @@ count_unknown <- function(data, value) {
     arrange(desc(count))
 }
 
-create_model_data <- function(data, exclude_vars = NULL) {
-  dummy_vars <- c("age_categ", "was_contacted", "job", "marital", "education", 
-                  "contact_type", "day", "month", "poutcome")
-  
-  dmy <- dummyVars(~ ., data = data[dummy_vars], fullRank = TRUE)
-  dummy_data <- data.frame(predict(dmy, newdata = data))
-  
-  model_data <- cbind(
-    dummy_data,
-    data[c("balance", "campaign", "pdays", "previous", 
-           "subscribed", "in_default", "housing_loan", "personal_loan")]
-  )
-
+create_model_data <- function(data, outcome_var, exclude_vars = NULL) {
   if (!is.null(exclude_vars)) {
-    model_data <- model_data %>% 
+    data <- data %>%
       select(-any_of(exclude_vars))
   }
+  
+  outcome_data <- data %>% select(all_of(outcome_var))
+  predictors <- data %>% select(-all_of(outcome_var))
+
+  vars_to_dummy <- predictors %>%
+    select(where(~ !is.numeric(.) | n_distinct(.) > 2)) %>%
+    colnames()
+    
+  numeric_data <- predictors %>%
+    select(where(is.numeric) & !any_of(vars_to_dummy))
+
+  dummy_data <- predictors %>%
+    select(any_of(vars_to_dummy)) %>%
+    dummy_cols(remove_selected_columns = TRUE, remove_first_dummy = TRUE)
+  
+  model_data <- bind_cols(numeric_data, dummy_data, outcome_data)
   
   return(model_data)
 }
@@ -206,7 +211,7 @@ We have a severe imbalance in our data. Only 11,6% of contacted clients subscrib
 
 ## Age
 
-```{r}
+```{r, fig.width=10,fig.height=5}
 ggplot(bank_data, aes(x = age)) +
   geom_bar() + 
   facet_grid(subscribed ~ ., scales = "free_y")
@@ -229,7 +234,7 @@ Clients of at least the age of 60 were most likely to subscribe: 42,3% of them c
 
 The continuous age variable does not indicate a linear relationship between age and subscription rates.
 
-```{r}
+```{r, fig.width=10,fig.height=4}
 ggplot(bank_data, aes(x = age, fill = subscribed)) +
   geom_density(alpha = 0.5) +
   xlim(18, 99)
@@ -259,11 +264,11 @@ nrow(bank_data)
 
 Let's look at what percentage of clients subscribed based on their job.
 
-```{r}
+```{r, fig.width=10,fig.height=4}
 create_plot(bank_data, "job", "count")
 ```
 
-```{r}
+```{r, fig.width=10,fig.height=4}
 create_plot(bank_data, "job")
 ```
 
@@ -279,7 +284,7 @@ CrossTable(bank_data$subscribed, bank_data$marital, prop.t = FALSE, prop.chisq =
 
 Married clients make up 60,1% of our data set. Single clients were slightly more likely to subscribe to a deposit (14,9%) than other clients. It is also probable that this tendency is caused by randomness as marital status categories are not divided equally (single - 28,3%, divorced - 11,6% and married - 60,1%).
 
-```{r}
+```{r, fig.width=10,fig.height=4}
 create_plot(bank_data, "marital")
 ```
 
@@ -295,7 +300,7 @@ There are 1730 "unknown" values (3,9%) in the education variable. If we removed 
 
 Clients with a tertiary (college/university/vocational training) education (29,5%) are most likely to subscribe out of all groups - 15% of them chose to do so.
 
-```{r}
+```{r, fig.width=10,fig.height=4}
 create_plot(bank_data, "education")
 ```
 
@@ -309,7 +314,7 @@ CrossTable(bank_data$subscribed, bank_data$in_default, prop.t = FALSE, prop.chis
 
 Only 6,4% of clients that were in default chose to sign up for a deposit. Out of the total sample only 1,8% of clients were in default. This variable is unlikely to be a good indicator of whether the client subscribes to a deposit.
 
-```{r}
+```{r, fig.width=10,fig.height=4}
 create_plot(bank_data, "in_default")
 ```
 
@@ -317,15 +322,28 @@ create_plot(bank_data, "in_default")
 
 ## Balance
 
-```{r message=FALSE, warning=FALSE}
+```{r message=FALSE, warning=FALSE, fig.width=10,fig.height=4}
 ggplot(bank_data, aes(x = balance, fill = subscribed)) +
   geom_density(alpha = 0.5) +
   xlim(-1000, 5500)
 ```
 
-The balance density plot does not immediately indicate that wealthier clients are more likely to make a subscription.
+The balance density plot does not immediately indicate that wealthier clients are more likely to make a subscription. We can try to create a new indicator variable that checks if the client has a balance above the peak balance for subscribed clients.
 
-```{r message=FALSE, warning=FALSE}
+```{r}
+density <- density(bank_data$balance[bank_data$subscribed == TRUE])
+density$x[which.max(density$y)]
+```
+
+The distribution peaks at around 258 euros. We'll pick 250.
+
+```{r}
+bank_data <- bank_data %>% 
+  mutate(balance_above_250 = balance > 250)
+```
+
+
+```{r message=FALSE, warning=FALSE, fig.width=10, fig.height=4}
 ggplot(bank_data, aes(x = balance, fill = subscribed)) +
   geom_boxplot(alpha = 0.5) +
   xlim(-1000, 5500)
@@ -345,7 +363,7 @@ paste0("Outlier Percentage: ", round(outlierNum/(length(bank_data$balance)) * 10
 
 Since the balance standard deviation is relatively high (3045,09 euros) and 10,49% of the entries can be marked as outliers, we'll normalize the balance variable using the Order-Norm transformation (converts each value to its percentile rank in the original distribution, then maps that percentile to the corresponding value in a standard normal distribution).
 
-```{r warning=FALSE}
+```{r warning=FALSE, fig.width=10, fig.height=4}
 on <- orderNorm(bank_data$balance)
 bank_data$trans_balance <- predict(on)
 
@@ -374,7 +392,7 @@ CrossTable(bank_data$subscribed, bank_data$personal_loan, prop.t = FALSE, prop.c
 
 The situation with personal loans is practically the same as with housing loans accept the fact that only 16,1% of the clients had a personal loan (55,9% had a housing loan). Clients that did not have a personal loan were 1,9 times as likely to subscribe than the clients without one.
 
-```{r}
+```{r, fig.width=10,fig.height=4}
 plot_list <- lapply(c("housing_loan", "personal_loan"), function(var) create_plot(bank_data, var))
 
 bar_plot_matrix <- grid.arrange(grobs = plot_list, ncol = 2)
@@ -392,7 +410,7 @@ CrossTable(bank_data$subscribed, bank_data$contact_type, prop.t = FALSE, prop.ch
 
 Clients that were contacted through cellular were slightly more likely to make a subscription. The contact type for 28,7% of the clients is unknown.
 
-```{r}
+```{r, fig.width=10, fig.height=4}
 create_plot(bank_data, "contact_type")
 ```
 
@@ -400,31 +418,31 @@ create_plot(bank_data, "contact_type")
 
 ## Day and month
 
-```{r}
+```{r, fig.width=10, fig.height=4}
 create_plot(bank_data, "day")
 ```
 
-```{r}
+```{r, fig.width=10, fig.height=4}
 create_plot(bank_data, "month")
 ```
 
 At first sight March, September, October and December seem to be the best months to contact the clients. Higher success could also be achieved when contacting the clients on the 1st, 10th, 22nd and 30th.
 
-```{r}
+```{r, fig.width=10, fig.height=4}
 create_plot(bank_data, "day", "count")
 ```
 
-```{r}
+```{r, fig.width=10, fig.height=4}
 create_plot(bank_data, "month", "count")
 ```
 
-After digging deeper, it becomes clear that the distribution of number of calls by date and month is disproportionate. The least clients were called on the 1st, 10th, 24th and 31st, and in March, September, October and December. This inconsistency should be addressed by the researchers that collected the data: more calls should be conducted to equalize the distribution.
+After digging deeper, it becomes clear that the distribution of number of calls by date and month is disproportionate. The least clients were called on the 1st, 10th, 24th and 31st, and in March, September, October and December. This inconsistency should be addressed by the researchers that collected the data: more calls should be conducted to make the distribution more uniform.
 
 \newpage
 
 ## Duration
 
-```{r message=FALSE, warning=FALSE}
+```{r message=FALSE, warning=FALSE, fig.width=10, fig.height=4}
 ggplot(bank_data, aes(x = duration, fill = subscribed)) +
   geom_density(alpha = 0.5) +
   xlim(0, 1600)
@@ -438,7 +456,7 @@ Call duration seems to tell a clearer story than other continuous variables. Cli
 
 ### Campaign contacts
 
-```{r}
+```{r, fig.width=10, fig.height=5}
 ggplot(bank_data, aes(x = campaign)) +
   geom_bar() + 
   facet_grid(subscribed ~ ., scales = "free_y") +
@@ -477,7 +495,7 @@ bank_data <- bank_data %>%
 
 ### Previous contacts
 
-```{r}
+```{r, fig.width=10, fig.height=5}
 ggplot(bank_data, aes(x = previous)) +
   geom_bar() + 
   facet_grid(subscribed ~ ., scales = "free_y") + 
@@ -505,7 +523,7 @@ CrossTable(bank_data$subscribed, bank_data$poutcome, prop.t = FALSE, prop.chisq 
 
 If the outcome of the previous campaign was successful, the outcome of the current campaign on the same client has a 64,6% likelihood of being successful. Although it must be noted that there are only 1500 clients with the poutcome attribute set as successful and the vast majority (81,7%) are set as unknown.
 
-```{r}
+```{r, fig.width=10, fig.height=4}
 create_plot(bank_data, "poutcome")
 ```
 
@@ -618,10 +636,10 @@ We can see that to 5227 "potential" clients the marketing campaign hasn't been e
 Our original dataset is separated into two, training and testing, inside the create_model_data function.
 
 ```{r}
-dummy_full <- create_model_data(bank_data)
+dummy_full <- create_model_data(bank_data, outcome_var = "subscribed", exclude_vars = c("day", "month", "age"))
 ```
 
-And finally, we can run the model and output the results.
+And finally, we can run the model with all the variables that are available before contacting the client and output the results.
 
 ```{r}
 results_1 <- train_evaluate_model(dummy_full, "Full Model")
@@ -631,19 +649,16 @@ print(summary(results_1$model))
 cat("\nModel 1 AUC:", round(results_1$auc, 4), "\n")
 ```
 
+Looking at the model summary, we can say that:
+1. Grouping of the age variable turned out to be meaningful;
+2. The job type isn't influential in the model and certain professions should be grouped by their complexity;
+3. Balance, even when turned into an indicator variable, is not statistically significant;
+
 Now we remove variables that are not statistically meaningful to the model and produce a second much simpler model.
 
 ```{r}
-exclude_vars <- c(
-  "job.admin", "job.blue.collar", "job.entrepreneur", "job.management", 
-  "job.retired", "job.self.employed", "job.services", "job.technician",
-  "marital.divorced", "education.secondary", 
-  paste0("day.", c(2:6, 7:9, 11:12, 14:16, 18, 20:22, 24:26, 28:29, 31)),
-  "campaign", "poutcome.failure", "poutcome.other", "poutcome.success", 
-  "in_default", "previous", "balance"
-)
+dummy_full_2 <- create_model_data(bank_data, outcome_var = "subscribed", exclude_vars = c("day", "month", "age", "balance", "balance_above_250", "poutcome", "previous"))
 
-dummy_full_2 <- create_model_data(bank_data, exclude_vars = exclude_vars)
 results_2 <- train_evaluate_model(dummy_full_2, "Reduced Model")
 
 cat("\nModel 2 (Reduced) Summary:\n")
@@ -658,7 +673,7 @@ plot(results_1$roc_curve, col = "blue")
 plot(results_2$roc_curve, col = "red", add = TRUE)
 ```
 
-Although, with the statistically insignificant parameters removed, our logistic regression model's AUC is lowered to 0,7652 from 0,7839, the model becomes much simpler which is preferred.
+Although, with the statistically insignificant parameters removed, our logistic regression model's AUC is lowered to 0,8908 from 0,9009, the model becomes much simpler which is preferred.
 
 ```{r}
 pred_class <- ifelse(results_2$predictions > 0.5, TRUE, FALSE)
@@ -670,7 +685,7 @@ confusion_matrix <- confusionMatrix(
 print(confusion_matrix)
 ```
 
-The sensitivity (true positive) of the model is quite low. Only 11,8% of clients who would subscribe to a deposit are being recognized as "subscribers".
+The sensitivity (true positive) of the model is quite low. Only 25,3% of clients who would subscribe to a deposit are being recognized as "subscribers".
 
 We can try lowering the threshold as there is no need to be too conservative.
 
@@ -684,12 +699,12 @@ confusion_matrix_2 <- confusionMatrix(
 print(confusion_matrix_2)
 ```
 
-By lowering the threshold down to 0.12, true positives are being recognized with 63,56% accuracy (up from 11,13%) and the specificity is lowered to 75,92% (from 97,4%).
+By lowering the threshold down to 0.12, true positives are being recognized with 81,28% accuracy (up from 25,3%) and the specificity is raised to 81,32% (from 75,92%).
 
 # Conclusion
 
-1.  The logistic regression model accuracy score is 0,7448 (with threshold adjusted). True positive rate is 63,56%.
-2.  Most important parameters for choosing a potential bank deposit subscriber are contact type, day and month of contact and whether the client has borrowed a loan.
+1.  The logistic regression model accuracy score is 0.8128 (with threshold adjusted). True positive rate is 81,28%.
+2.  Most important parameters for choosing a potential bank deposit subscriber are contact type and whether the client has borrowed a loan.
 3.  The duration variable cannot be used in the model due to in not being available before calling the customer even though it is the most significant determining feature.
 4.  The researchers should look into gathering additional data during aforementioned days and months.
 5.  Additional descriptive client variables, such as previously used bank products and household income, would help increase model performance.
