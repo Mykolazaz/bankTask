@@ -3,9 +3,7 @@ title: "Predictive Bank Client Deposit Rate Analysis"
 subtitle: "Portfolio Project"
 author: "Mykolas Motiejūnas"
 date: "`r format(Sys.time(), '%Y-%m')`"
-output:
-  pdf_document:
-    number_sections: true
+output: pdf_document
 ---
 
 \newpage
@@ -63,33 +61,8 @@ count_unknown <- function(data, value) {
     arrange(desc(count))
 }
 
-create_model_data <- function(data, outcome_var, exclude_vars = NULL) {
-  if (!is.null(exclude_vars)) {
-    data <- data %>%
-      select(-any_of(exclude_vars))
-  }
-  
-  outcome_data <- data %>% select(all_of(outcome_var))
-  predictors <- data %>% select(-all_of(outcome_var))
-
-  vars_to_dummy <- predictors %>%
-    select(where(~ !is.numeric(.) | n_distinct(.) > 2)) %>%
-    colnames()
-    
-  numeric_data <- predictors %>%
-    select(where(is.numeric) & !any_of(vars_to_dummy))
-
-  dummy_data <- predictors %>%
-    select(any_of(vars_to_dummy)) %>%
-    dummy_cols(remove_selected_columns = TRUE, remove_first_dummy = TRUE)
-  
-  model_data <- bind_cols(numeric_data, dummy_data, outcome_data)
-  
-  return(model_data)
-}
-
-train_evaluate_model <- function(data, model_name = "Model", seed = 167) {
-  set.seed(seed)
+train_evaluate_model <- function(data) {
+  set.seed(167)
   
   train_indices <- createDataPartition(data$subscribed, p = 0.8, list = FALSE)
   train_data <- data[train_indices, ]
@@ -135,7 +108,7 @@ tail(bank_data)
 str(bank_data, give.attr = FALSE)
 ```
 
-A first look at the data shows us that many of the provided columns have an incorrect data type. For example, default and marital status are set as character data types when they should be factors.
+A first look at the data shows us that many of the provided columns are marked with an incorrect data type. For example, default and marital status are set as character data types when they should be factors.
 
 ```{r}
 factor_cols <- c("marital", "job", "education", "contact", "poutcome", "day")
@@ -217,7 +190,7 @@ ggplot(bank_data, aes(x = age)) +
   facet_grid(subscribed ~ ., scales = "free_y")
 ```
 
-Many clients contacted by the bank were between 25 and 60 years old. Age here is not distributed normally. Using these insights we can create a categorical age variable.
+Many clients contacted by the bank were between 25 and 60 years old. Age here is not distributed normally. Using these insights we can create a categorical age variable by segmenting then into young, working-age and older customers.
 
 ```{r}
 bank_data <- bank_data %>% 
@@ -232,7 +205,7 @@ CrossTable(bank_data$subscribed, bank_data$age_categ, prop.t = FALSE, prop.chisq
 
 Clients of at least the age of 60 were most likely to subscribe: 42,3% of them chose to do so. That is the highest percentage of all age groups even though older clients make up the smallest part of the total population.
 
-The continuous age variable does not indicate a linear relationship between age and subscription rates.
+The previous (continuous) age variable does not indicate a linear relationship between age and subscription rates.
 
 ```{r, fig.width=10,fig.height=4}
 ggplot(bank_data, aes(x = age, fill = subscribed)) +
@@ -250,7 +223,7 @@ The density plots also do not show a large difference in terms of age with the e
 summary(bank_data$job)
 ```
 
-There is a total of 228 unknown job values. Due to the large number of total rows, we can afford to drop the "unknowns".
+There is a total of 228 unknown job values. Due to the large number of total rows, we can afford to drop the "unknowns". The inclusion "unknown" job type would make the model less stable. Looking at the bigger picture, unknown values in this column should not exist at all as the bank should have this information about their clients.
 
 ```{r}
 bank_data <- bank_data %>%
@@ -273,6 +246,10 @@ create_plot(bank_data, "job")
 ```
 
 As the chart shows, students, of all jobs, were most likely to subscribe to a deposit (28,7%) with retired workers following second at 22,8%. This could be to students having fewer major expenses, such as mortgages or car loans, and being heavily dependent on their parents. Retirees also often seek low-risk investment options, making bank deposits attractive.
+
+```{r}
+CrossTable(bank_data$job, bank_data$subscribed, prop.t = FALSE, prop.chisq = FALSE)
+```
 
 \newpage
 
@@ -312,7 +289,7 @@ create_plot(bank_data, "education")
 CrossTable(bank_data$subscribed, bank_data$in_default, prop.t = FALSE, prop.chisq = FALSE)
 ```
 
-Only 6,4% of clients that were in default chose to sign up for a deposit. Out of the total sample only 1,8% of clients were in default. This variable is unlikely to be a good indicator of whether the client subscribes to a deposit.
+Only 6,4% of clients that were in default chose to sign up for a deposit. Out of the total sample only 1,8% of clients were in default. This variable is likely to be a good indicator of whether the client subscribes to a deposit, but we most likely should not offer deposits to clients that are in default at all.
 
 ```{r, fig.width=10,fig.height=4}
 create_plot(bank_data, "in_default")
@@ -320,7 +297,7 @@ create_plot(bank_data, "in_default")
 
 \newpage
 
-## Balance
+## Balance (yearly average)
 
 ```{r message=FALSE, warning=FALSE, fig.width=10,fig.height=4}
 ggplot(bank_data, aes(x = balance, fill = subscribed)) +
@@ -342,14 +319,13 @@ bank_data <- bank_data %>%
   mutate(balance_above_250 = balance > 250)
 ```
 
-
 ```{r message=FALSE, warning=FALSE, fig.width=10, fig.height=4}
 ggplot(bank_data, aes(x = balance, fill = subscribed)) +
   geom_boxplot(alpha = 0.5) +
   xlim(-1000, 5500)
 ```
 
-Since we are dealing with financial data, there are many extreme outliers in the distributions of variables. Though the box plots do indicate that the median balance is higher for those who chose to subscribe.
+Since we are dealing with financial data, there are many extreme outliers in the distributions of variables. Even though the box plots do not paint the full picture, they do indicate that the median balance is higher for those who chose to subscribe.
 
 ```{r}
 paste0("Balance Mean: ", round(mean(bank_data$balance, na.rm = TRUE), 2))
@@ -361,7 +337,7 @@ paste0("Outlier Percentage: ", round(outlierNum/(length(bank_data$balance)) * 10
 
 ```
 
-Since the balance standard deviation is relatively high (3045,09 euros) and 10,49% of the entries can be marked as outliers, we'll normalize the balance variable using the Order-Norm transformation (converts each value to its percentile rank in the original distribution, then maps that percentile to the corresponding value in a standard normal distribution).
+Since the balance standard deviation is relatively high (3045,09 euros) and 10,49% of the entries can be marked as outliers, we'll normalize the balance variable using the Order-Norm transformation (converts each value to its percentile rank in the original distribution, then maps that percentile to the corresponding value in a standard normal distribution). This will provide at least a rough comparison between the groups.
 
 ```{r warning=FALSE, fig.width=10, fig.height=4}
 on <- orderNorm(bank_data$balance)
@@ -374,7 +350,7 @@ ggplot(bank_data, aes(x = job, y = trans_balance, fill = job)) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none")
 ```
 
-The box plots allow us to conclude that the balance of client accounts is likely dependent more factors than simply their job. It also indicates that the clients, grouped by their job type, are not homogeneous (as we had to apply Order-Norm transformation to achieve more normal values). Nevertheless, we can draw certain conclusions. For example, we can see that the median account balance of students is higher than those of service workers. Another trend is clear - retirees have the highest average and median balance.
+The box plots allow us to conclude that the balance of client accounts is likely dependent more factors than simply their job. It also indicates that the clients, grouped by their job type, are not homogeneous (even with balance transformed). Nevertheless, we can draw certain conclusions. For example, we can see that the retirees have the highest average and median balance and service workers have the lowest balance. This is logical as retirees often have accumulated savings over their lifetime, while service workers may have lower wages and less opportunity to save.
 
 \newpage
 
@@ -408,7 +384,7 @@ It is clear that this variable will also be significant when modelling as client
 CrossTable(bank_data$subscribed, bank_data$contact_type, prop.t = FALSE, prop.chisq = FALSE)
 ```
 
-Clients that were contacted through cellular were slightly more likely to make a subscription. The contact type for 28,7% of the clients is unknown.
+Clients that were contacted through cellular were slightly more likely to make a subscription. The contact type for 28,7% of the clients is unknown. "Unknown" values here are an error in the data collection process. Anyway, this variable will not be useful as we would learn about the contact type only after contact.
 
 ```{r, fig.width=10, fig.height=4}
 create_plot(bank_data, "contact_type")
@@ -476,7 +452,7 @@ campaign_camp <- bank_data$campaign[bank_data$campaign < 6]
 CrossTable(subscribed_camp, campaign_camp, prop.t = FALSE, prop.chisq = FALSE)
 ```
 
-Number of contacts during the campaign seems to increase the likeliness of subscription but with linearly diminishing returns.
+Number of contacts during the campaign seems to increase the likeliness of subscription but with diminishing returns.
 
 \newpage
 
@@ -486,7 +462,7 @@ Number of contacts during the campaign seems to increase the likeliness of subsc
 sum(bank_data$pdays != -1)
 ```
 
-There are 8224 clients which have been contacted in the past. Since there are many different pdays values and because the variable has been encoded as -1 or any other natural number, we can transform this variable into a binary variable.
+There are 8224 clients which have been contacted in the past. Since there are many different pdays (days passed after previous contact from last campaign) values and because the variable has been encoded as -1 or any other natural number, we can transform this variable into a binary variable.
 
 ```{r}
 bank_data <- bank_data %>%
@@ -532,179 +508,199 @@ create_plot(bank_data, "poutcome")
 ## Correlation of continuous variables
 
 ```{r}
-corr_matrix <- cor(bank_data[, c("age", "balance", "duration")], use = "complete.obs")
-print(round(corr_matrix, 4))
+model <- lm(subscribed ~ age + balance + campaign + pdays + previous, data = bank_data)
+vif_values <- car::vif(model)
+
+print(vif_values)
 ```
 
-As the continuous variables are not correlated with each other, we can negate multicollinearity concerns for the logistic regression model.
-
-\newpage
-
-# Manipulating data (illustrative)
-
-We select a small random sample of the provided data with a pre-determined seed for repeatable results.
-
-```{r}
-set.seed(167)
-smallBank <- sample_n(bank_data, 400, replace = FALSE)
-```
-
-Let's choose a data frame with the clients that have a dangerously low balance and have or have had a partner at a point in their life. Due to low numbers in the total population, let's search for them in the full data set.
-
-```{r}
-lowBalwPartner <- bank_data %>% 
-  filter(balance < 100 & marital %in% c("maried", "divorced"))
-```
-
-Also, we'll filter another group of clients which have at least one loan with the bank and are at least of the median age for the data set.
-
-```{r}
-withLoans <- bank_data %>% 
-  filter((housing_loan == TRUE | personal_loan == TRUE) & age >= median(age, na.rm = TRUE))
-```
-
-We may also calculate the summarizing statistics.
-
-```{r}
-job_summary <- bank_data %>%
-  group_by(job) %>%
-  summarise(
-    age_mean = round(mean(age, na.rm = TRUE), 2),
-    balance_mean = mean(balance, na.rm = TRUE),
-    balance_median = median(balance, na.rm = TRUE),
-    balance_sd = sd(balance, na.rm = TRUE),
-    duration_median = median(duration, na.rm = TRUE),
-    n = n()
-  ) %>%
-  arrange(desc(n), desc(age_mean))
-
-print(job_summary)
-```
-
-The summarized statistics allows us to make a few insights about the clients that were contacted. First, the clients with a job in management had the highest average balance. Second, high standard deviation tells us that client balance varies quite a lot from one client to another. Third, most clients over all had a balance in the mid-500s. Fourth, most of the contacted clients were blue-collar workers. That is quite normal as blue-collar workers usually make up the largest percentage of the population.
-
-We should also inspect the clients that chose to subscribe to a deposit and what characteristics they show.
-
-```{r}
-subscriber_summary <- bank_data %>%
-  filter(subscribed == TRUE) %>%
-  select(-in_default) %>%
-  summarise(across(everything(), ~DescTools::Mode(.x), .names = "mode_{.col}"))
-
-print(subscriber_summary)
-```
-
-The data shows us that the "most common" client that chose to subscribe to a deposit is a 32 y.o. married management worker which was contacted via phone in May and the phone call lasted 261 seconds. These could be the key factors which influence the probability of subscription.
-
-Using the previous conclusion, we may create a mock variable that assigns a score of how likely each client is to subscribe to a deposit. To to give sense to the number representation of the score, we will apply a min-max transformation.
-
-```{r}
-find_engagement <- function(duration, balance, housing_loan, personal_loan, in_default) {
-  if(in_default != TRUE){
-    score <- duration + 10 * (balance / 1000) - housing_loan * 10 - personal_loan * 20
-    if (score < 0){
-      return(0)
-    } else {
-      return(score)
-    }
-  } else {
-    return(0)
-  }
-}
-
-bank_data <- bank_data %>% 
-  mutate(engagement_score = mapply(find_engagement, duration, balance, housing_loan, personal_loan, in_default)) %>%
-  mutate(engagement_score = round((engagement_score - min(engagement_score, na.rm = TRUE)) / 
-           (max(engagement_score, na.rm = TRUE) - min(engagement_score, na.rm = TRUE)), 3))
-```
-
-In order to detect clients that have no loans and sufficient balance to make a bank term deposit (a.k.a. are "good" potential depositors), but have specifically chosen not to, we will create a new indicator column.
-
-```{r}
-bank_data_potencial <- bank_data %>%
-  mutate(potential_client = balance > 1000 & campaign > 0 & previous == 0 &
-                            !in_default & !housing_loan & !personal_loan)
-summary(bank_data_potencial$potential_client)
-```
-
-We can see that to 5227 "potential" clients the marketing campaign hasn't been effective.
+All VIF values are well below 4, indicating that there is no multicollinearity.
 
 \newpage
 
 # Modelling
 
-Our original dataset is separated into two, training and testing, inside the create_model_data function.
+A seed is set inside the train_evaluate_model function. Train-test data split of 80:20 also happens inside the function.
+
+We will leave out `day`, `month`, `duration` and `contact_type` variables as they are either not useful or not available before contacting the client.
+
+Let's select model parameters with backward stepwise selection and begin with variables that are less significant based on logic.
 
 ```{r}
-dummy_full <- create_model_data(bank_data, outcome_var = "subscribed", exclude_vars = c("day", "month", "age"))
+results_0 <- train_evaluate_model(bank_data[, !names(bank_data) %in% c("day", "month", "duration", "contact_type")])
+
+cat("Model 0 (Full) Summary:\n")
+print(summary(results_0$model))
+cat("\nModel 0 AUC:", round(results_0$auc, 4), "\n")
 ```
 
-And finally, we can run the model with all the variables that are available before contacting the client and output the results.
+In the current model there are multiple versions of the age, the balance and the previous contact count variable. Let's try keeping only the best one out of each.
 
 ```{r}
-results_1 <- train_evaluate_model(dummy_full, "Full Model")
+results_1 <- train_evaluate_model(bank_data[, !names(bank_data) %in% c("day", "month", "duration", "contact_type", "balance", "trans_balance")])
 
-cat("Model 1 (Full) Summary:\n")
+cat("Model 0 (Full) Summary:\n")
 print(summary(results_1$model))
-cat("\nModel 1 AUC:", round(results_1$auc, 4), "\n")
+cat("\nModel 0 AUC:", round(results_1$auc, 4), "\n")
 ```
 
-Looking at the model summary, we can say that:
-1. Grouping of the age variable turned out to be meaningful;
-2. The job type isn't influential in the model and certain professions should be grouped by their complexity;
-3. Balance, even when turned into an indicator variable, is not statistically significant;
-
-Now we remove variables that are not statistically meaningful to the model and produce a second much simpler model.
-
 ```{r}
-dummy_full_2 <- create_model_data(bank_data, outcome_var = "subscribed", exclude_vars = c("day", "month", "age", "balance", "balance_above_250", "poutcome", "previous"))
+results_2 <- train_evaluate_model(bank_data[, !names(bank_data) %in% c("day", "month", "duration", "contact_type", "balance_above_250", "trans_balance")])
 
-results_2 <- train_evaluate_model(dummy_full_2, "Reduced Model")
-
-cat("\nModel 2 (Reduced) Summary:\n")
+cat("Model 0 (Full) Summary:\n")
 print(summary(results_2$model))
-cat("\nModel 2 AUC:", round(results_2$auc, 4), "\n")
+cat("\nModel 0 AUC:", round(results_2$auc, 4), "\n")
 ```
 
-We should also compare the models' performance.
-
 ```{r}
-plot(results_1$roc_curve, col = "blue")
-plot(results_2$roc_curve, col = "red", add = TRUE)
+results_3 <- train_evaluate_model(bank_data[, !names(bank_data) %in% c("day", "month", "duration", "contact_type", "balance_above_250", "balance")])
+
+cat("Model 0 (Full) Summary:\n")
+print(summary(results_3$model))
+cat("\nModel 0 AUC:", round(results_3$auc, 4), "\n")
 ```
 
-Although, with the statistically insignificant parameters removed, our logistic regression model's AUC is lowered to 0,8908 from 0,9009, the model becomes much simpler which is preferred.
+As it turns out, the model with `trans_balance` provided the largest AUC value. Let's do the same for the age variable.
 
 ```{r}
-pred_class <- ifelse(results_2$predictions > 0.5, TRUE, FALSE)
-confusion_matrix <- confusionMatrix(
-  factor(pred_class),
-  factor(results_2$test_data$subscribed),
-  positive = "TRUE"
+results_4 <- train_evaluate_model(bank_data[, !names(bank_data) %in% c("day", "month", "duration", "contact_type", "balance_above_250", "balance", "age_categ")])
+
+cat("Model 0 (Full) Summary:\n")
+print(summary(results_4$model))
+cat("\nModel 0 AUC:", round(results_4$auc, 4), "\n")
+```
+
+```{r}
+results_5 <- train_evaluate_model(bank_data[, !names(bank_data) %in% c("day", "month", "duration", "contact_type", "balance_above_250", "balance", "age")])
+
+cat("Model 0 (Full) Summary:\n")
+print(summary(results_5$model))
+cat("\nModel 0 AUC:", round(results_5$auc, 4), "\n")
+```
+
+By dropping the continuous age variable, the AUC value increased slightly. We will keep `age_categ` and `trans_balance` in our model.
+
+```{r}
+results_6 <- train_evaluate_model(bank_data[, !names(bank_data) %in% c("day", "month", "duration", "contact_type", "balance_above_250", "balance", "age", "was_contacted")])
+
+cat("Model 0 (Full) Summary:\n")
+print(summary(results_6$model))
+cat("\nModel 0 AUC:", round(results_6$auc, 4), "\n")
+```
+
+```{r}
+results_7 <- train_evaluate_model(bank_data[, !names(bank_data) %in% c("day", "month", "duration", "contact_type", "balance_above_250", "balance", "age", "previous")])
+
+cat("Model 0 (Full) Summary:\n")
+print(summary(results_7$model))
+cat("\nModel 0 AUC:", round(results_7$auc, 4), "\n")
+```
+
+Neither of the `previous` variable variations are statistically significant. We will drop them.
+
+```{r}
+results_7 <- train_evaluate_model(bank_data[, !names(bank_data) %in% c("day", "month", "duration", "contact_type", "balance_above_250", "balance", "age", "previous", "was_contacted")])
+
+cat("Model 0 (Full) Summary:\n")
+print(summary(results_7$model))
+cat("\nModel 0 AUC:", round(results_7$auc, 4), "\n")
+```
+
+We can also drop the `pdays` and `in_default` variables as it is not statistically significant.
+
+```{r}
+results_8 <- train_evaluate_model(bank_data[, !names(bank_data) %in% c("day", "month", "duration", "contact_type", "balance_above_250", "balance", "age", "previous", "was_contacted", "pdays", "in_default")])
+
+cat("Model 0 (Full) Summary:\n")
+print(summary(results_8$model))
+cat("\nModel 0 AUC:", round(results_8$auc, 4), "\n")
+```
+
+What we are left with is a model that mostly has statistically significant variables. Yet, we still the `education` and 'job' variable that have categories that are not significant. We should try grouping into larger groups.
+
+```{r}
+bank_data <- bank_data %>% 
+  mutate(has_higher_education = ifelse(education == "tertiary", TRUE, FALSE))
+```
+
+```{r}
+results_9 <- train_evaluate_model(bank_data[, !names(bank_data) %in% c("day", "month", "duration", "contact_type", "balance_above_250", "balance", "age", "previous", "was_contacted", "pdays", "in_default", "education")])
+
+cat("Model 0 (Full) Summary:\n")
+print(summary(results_9$model))
+cat("\nModel 0 AUC:", round(results_9$auc, 4), "\n")
+```
+
+We can try grouping the jobs by their likelihood of subscription.
+
+```{r}
+bank_data <- bank_data %>% 
+  mutate(job_type = case_when(
+    job %in% c("retired", "student") ~ "high_prob",
+    job %in% c("management", "admin", "unemployed", "self-employed") ~ "mid_prob",
+    job %in% c("blue-collar", "entrepreneur", "housemaid", "services", "technician") ~ "low_prob"
+  ),
+  job_type = factor(job_type, levels = c("low_prob", "mid_prob", "high_prob")),
+  job_type = relevel(job_type, ref = "low_prob"))
+```
+
+```{r}
+results_10 <- train_evaluate_model(bank_data[, !names(bank_data) %in% c("day", "month", "duration", "contact_type", "balance_above_250", "balance", "age", "previous", "was_contacted", "pdays", "in_default", "job", "education")])
+
+cat("Model 0 (Full) Summary:\n")
+print(summary(results_10$model))
+cat("\nModel 0 AUC:", round(results_10$auc, 4), "\n")
+```
+
+Now we have a model where all variables are statistically significant. Let's train train our model with k-fold cross-validation with k=10 to confirm the results. We will use upsampling of subscribers due to the imbalanced data set.
+
+```{r}
+set.seed(1)
+
+train_control <- trainControl(
+  method = "cv",
+  number = 10,
+  savePredictions = "final",
+  classProbs = TRUE,
+  summaryFunction = multiClassSummary,
+  sampling = "up"
 )
-print(confusion_matrix)
+
+bank_data$subscribed_f <- factor(bank_data$subscribed, levels = c(FALSE, TRUE), labels = c("No", "Yes"))
 ```
-
-The sensitivity (true positive) of the model is quite low. Only 25,3% of clients who would subscribe to a deposit are being recognized as "subscribers".
-
-We can try lowering the threshold as there is no need to be too conservative.
 
 ```{r}
-pred_class_2 <- ifelse(results_2$predictions > 0.12, TRUE, FALSE)
-confusion_matrix_2 <- confusionMatrix(
-  factor(pred_class_2),
-  factor(results_2$test_data$subscribed),
-  positive = "TRUE"
+results_11 <- train(
+  subscribed_f ~ .,
+  data = bank_data[, !names(bank_data) %in% c("day", "month", "duration", "contact_type", "balance_above_250", "balance", "age", "previous", "was_contacted", "pdays", "in_default", "job", "education", "subscribed")],
+  method = "glm",
+  family = binomial,
+  trControl = train_control,
+  metric = "AUC"
 )
-print(confusion_matrix_2)
 ```
 
-By lowering the threshold down to 0.12, true positives are being recognized with 81,28% accuracy (up from 25,3%) and the specificity is raised to 81,32% (from 75,92%).
+```{r}
+print(results_11)
+```
+
+The cross-validated AUC value is 0,734 which is lower than 0,749 that we got when training and testing took place on a fixed data set split.
+
+```{r}
+confusionMatrix(results_11$pred$pred, results_11$pred$obs)
+```
+
+The sensitivity (TP/(TP+FN)) of the model is quite high. 75,73% clients who would subscribe to a deposit are being recognized as "subscribers". Specificity is moderate (59,31%), meaning that most clients who have subscribed are being classified as "subscribers".
+
+```{r}
+summary(results_11)
+```
+
 
 # Conclusion
 
-1.  The logistic regression model accuracy score is 0.8128 (with threshold adjusted). True positive rate is 81,28%.
-2.  Most important parameters for choosing a potential bank deposit subscriber are contact type and whether the client has borrowed a loan.
-3.  The duration variable cannot be used in the model due to in not being available before calling the customer even though it is the most significant determining feature.
+1.  The logistic regression model accuracy score is 0.7381. The sensitivity is 0.7573 and the specificity is 0.5931.
+2.  Most important parameters for choosing a potential bank deposit subscriber is the outcome of a previous campaign and whether the client has borrowed a loan.
+3.  The call duration, day, month and contact type variables cannot be used in the model due to in not being available before calling the customer even though they might be significant determining features.
 4.  The researchers should look into gathering additional data during aforementioned days and months.
 5.  Additional descriptive client variables, such as previously used bank products and household income, would help increase model performance.
