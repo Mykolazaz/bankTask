@@ -690,7 +690,7 @@ The cross-validated AUC value is 0,734 which is lower than 0,749 that we got whe
 confusionMatrix(results_11$pred$pred, results_11$pred$obs)
 ```
 
-The sensitivity (TP/(TP+FN)) of the model is quite high. 75,73% clients who would subscribe to a deposit are being recognized as "subscribers". Specificity is moderate (59,31%), meaning that most clients who have subscribed are being classified as "subscribers".
+The sensitivity (the true positive rate) of the model is quite high. 75,73% clients who would subscribe to a deposit are being recognized as "subscribers". Specificity (the true negative rate) is moderate (59,31%), meaning that the majority of clients who have subscribed are being classified as "subscribers".
 
 ```{r}
 summary(results_11)
@@ -699,7 +699,7 @@ summary(results_11)
 
 # Conclusion
 
-1.  The logistic regression model accuracy score is 0.7381. The sensitivity is 0.7573 and the specificity is 0.5931.
+1.  We have producted a logistic regression model with an accuracy score of 0,7381. The sensitivity is 0,7573 and the specificity is 0,5931.
 2.  Most important parameters for choosing a potential bank deposit subscriber is the outcome of a previous campaign and whether the client has borrowed a loan.
 3.  The call duration, day, month and contact type variables cannot be used in the model due to in not being available before calling the customer even though they might be significant determining features.
 4.  The researchers should look into gathering additional data during aforementioned days and months.
